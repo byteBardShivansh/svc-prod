@@ -1,4 +1,4 @@
-name: Terraform GCP Bucket Deploy
+name: Terraform with Firefly CI
 
 on:
   push:
@@ -12,6 +12,10 @@ jobs:
       contents: read
       id-token: write
 
+    env:
+      FIREFLY_ACCESS_KEY: ${{ secrets.FIREFLY_ACCESS_KEY }}
+      FIREFLY_SECRET_KEY: ${{ secrets.FIREFLY_SECRET_KEY }}
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -21,7 +25,7 @@ jobs:
         with:
           terraform_version: 1.8.1
 
-      - name: Authenticate to GCP with JSON key
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           credentials_json: '${{ secrets.GCP_CREDENTIALS_JSON }}'
@@ -29,8 +33,22 @@ jobs:
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Plan
-        run: terraform plan
+      - name: Terraform Plan and Generate Logs
+        run: |
+          terraform plan -json -out=tf.plan > plan_log.jsonl
+          terraform show -json tf.plan > plan_output.json
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
+      - name: Download Firefly CLI
+        run: |
+          curl -O https://gofirefly-prod-iac-ci-cli-binaries.s3.amazonaws.com/fireflyci/latest/fireflyci_Linux_x86_64.tar.gz
+          tar -xf fireflyci_Linux_x86_64.tar.gz
+          chmod +x fireflyci
+
+      - name: Firefly Post Plan
+        run: ./fireflyci post-plan -l plan_log.jsonl -f plan_output.json --workspace test-workspace
+
+      - name: Terraform Apply with Log
+        run: terraform apply -auto-approve -json > apply_log.jsonl
+
+      - name: Firefly Post Apply
+        run: ./fireflyci post-apply -f apply_log.jsonl --workspace test-workspace
