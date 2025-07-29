@@ -12,6 +12,6 @@ resource "google_storage_bucket" "web_server_logs" {
   location = "US"
 
   versioning {
-    enabled = true
+    enabled = false
   }
 }

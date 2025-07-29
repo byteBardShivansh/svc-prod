@@ -3,6 +3,16 @@ name: Terraform with Firefly CI
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action to perform"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - apply
+          - destroy
 
 jobs:
   deploy:
@@ -34,21 +44,30 @@ jobs:
         run: terraform init
 
       - name: Terraform Plan and Generate Logs
+        if: github.event_name == 'push' || github.event.inputs.action == 'apply'
         run: |
           terraform plan -json -out=tf.plan > plan_log.jsonl
           terraform show -json tf.plan > plan_output.json
 
       - name: Download Firefly CLI
+        if: github.event_name == 'push' || github.event.inputs.action == 'apply'
         run: |
           curl -O https://gofirefly-prod-iac-ci-cli-binaries.s3.amazonaws.com/fireflyci/latest/fireflyci_Linux_x86_64.tar.gz
           tar -xf fireflyci_Linux_x86_64.tar.gz
           chmod +x fireflyci
 
       - name: Firefly Post Plan
+        if: github.event_name == 'push' || github.event.inputs.action == 'apply'
         run: ./fireflyci post-plan -l plan_log.jsonl -f plan_output.json --workspace test-workspace
 
       - name: Terraform Apply with Log
+        if: github.event_name == 'push' || github.event.inputs.action == 'apply'
         run: terraform apply -auto-approve -json > apply_log.jsonl
 
       - name: Firefly Post Apply
+        if: github.event_name == 'push' || github.event.inputs.action == 'apply'
         run: ./fireflyci post-apply -f apply_log.jsonl --workspace test-workspace
+
+      - name: Terraform Destroy with Log
+        if: github.event.inputs.action == 'destroy'
+        run: terraform destroy -auto-approve -json > destroy_log.jsonl
